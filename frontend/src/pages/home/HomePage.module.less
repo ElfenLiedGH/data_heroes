@@ -1,0 +1,73 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.title {
+  margin: 0;
+  font-size: 28px;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--color-neutral-600, #666);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.tile {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tileCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 132px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tile:hover .tileCard,
+.tile:focus-visible .tileCard {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+}
+
+.tileLabel {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.tileDescription {
+  font-size: 13px;
+  color: var(--color-neutral-600, #666);
+  line-height: 1.4;
+}
+
+@media (max-width: 768px) {
+  .title {
+    font-size: 22px;
+  }
+
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .tileCard {
+    min-height: 118px;
+  }
+
+  .tileDescription {
+    display: none;
+  }
+}

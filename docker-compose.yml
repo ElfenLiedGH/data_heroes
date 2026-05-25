@@ -1,0 +1,160 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: notification_preferences
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    mem_limit: 768m
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/notification_preferences
+      API_KEY: ${API_KEY:-dev-notification-prefs-key-7f3e9a2b}
+      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
+      NODE_OPTIONS: "--max-old-space-size=512"
+      OTEL_SERVICE_NAME: notification-preferences-backend
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_LOGS_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_TRACES_EXPORTER: otlp
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'wget -qO- http://127.0.0.1:3000/api/v1/health > /dev/null 2>&1 || exit 1',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_KEY: ${API_KEY:-dev-notification-prefs-key-7f3e9a2b}
+        VITE_API_BASE_URL: /api/v1
+        VITE_OPENAPI_UI_URL: /api/docs
+        VITE_GRAFANA_URL: /grafana
+        VITE_GRAFANA_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+        VITE_GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    depends_on:
+      backend:
+        condition: service_started
+
+  gateway:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+    volumes:
+      - ./nginx/gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_started
+
+  postgres_exporter:
+    profiles: [observability]
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    environment:
+      DATA_SOURCE_NAME: postgresql://postgres:postgres@postgres:5432/notification_preferences?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  loki:
+    profiles: [observability]
+    image: grafana/loki:3.4.2
+    mem_limit: 192m
+    command: -config.file=/etc/loki/loki.yaml
+    volumes:
+      - ./observability/loki/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki_data:/loki
+
+  tempo:
+    profiles: [observability]
+    image: grafana/tempo:2.7.2
+    mem_limit: 192m
+    command: ['-config.file=/etc/tempo/tempo.yaml']
+    volumes:
+      - ./observability/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo
+
+  otel-collector:
+    profiles: [observability]
+    image: otel/opentelemetry-collector-contrib:0.120.0
+    mem_limit: 192m
+    command: ['--config=/etc/otel-collector/config.yaml']
+    volumes:
+      - ./observability/otel-collector/config.yaml:/etc/otel-collector/config.yaml:ro
+    depends_on:
+      - loki
+      - tempo
+
+  prometheus:
+    profiles: [observability]
+    image: prom/prometheus:v3.2.1
+    mem_limit: 192m
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    depends_on:
+      - otel-collector
+      - postgres_exporter
+
+  grafana:
+    profiles: [observability]
+    image: grafana/grafana:11.5.2
+    mem_limit: 192m
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_SECURITY_ALLOW_EMBEDDING: 'true'
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_SERVER_ROOT_URL: /grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: 'true'
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+
+  portainer:
+    image: portainer/portainer-ce:2.27.4
+    ports:
+      - '${PORTAINER_PORT:-9000}:9000'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    command:
+      - --admin-password=$$2y$$05$$oX2XdmlemgDBvCbKW5v1uurQO3Da41fSwg1..jf.MnQUYmLSr6fQ.
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+  tempo_data:
+  portainer_data:

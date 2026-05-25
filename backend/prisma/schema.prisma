@@ -1,0 +1,139 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum NotificationType {
+  transactional
+  marketing
+}
+
+enum Channel {
+  email
+  sms
+  push
+  messenger
+}
+
+enum Region {
+  EU
+  US
+  RU
+  GLOBAL
+}
+
+enum PolicyAction {
+  deny
+}
+
+enum DecisionReason {
+  allowed
+  blocked_by_global_policy
+  disabled_by_user_preference
+  disabled_by_default
+  blocked_by_quiet_hours
+}
+
+enum Decision {
+  allow
+  deny
+}
+
+enum PreferenceSource {
+  default
+  user
+}
+
+model User {
+  id         String   @id
+  region     Region
+  created_at DateTime @default(now())
+
+  preferences UserPreference[]
+  quiet_hours UserQuietHours?
+  evaluations EvaluationLog[]
+
+  @@map("users")
+}
+
+model DefaultPreference {
+  id                String           @id @default(cuid())
+  region            Region?
+  notification_type NotificationType
+  channel           Channel
+  enabled           Boolean
+  created_at        DateTime         @default(now())
+  updated_at        DateTime         @updatedAt
+
+  @@index([region])
+  @@map("default_preferences")
+}
+
+model UserPreference {
+  id                String           @id @default(cuid())
+  user_id           String
+  notification_type NotificationType
+  channel           Channel
+  enabled           Boolean
+  source            PreferenceSource @default(default)
+  created_at        DateTime         @default(now())
+  updated_at        DateTime         @updatedAt
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([user_id, notification_type, channel])
+  @@index([user_id])
+  @@map("user_preferences")
+}
+
+model UserQuietHours {
+  user_id    String   @id
+  start_time String
+  end_time   String
+  timezone   String
+  enabled    Boolean  @default(true)
+  updated_at DateTime @updatedAt
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@map("user_quiet_hours")
+}
+
+model GlobalPolicy {
+  id                String           @id @default(cuid())
+  notification_type NotificationType
+  channel           Channel
+  region            Region
+  action            PolicyAction
+  reason_code       DecisionReason
+  created_at        DateTime         @default(now())
+
+  evaluations EvaluationLog[]
+
+  @@unique([notification_type, channel, region])
+  @@map("global_policies")
+}
+
+model EvaluationLog {
+  id                String           @id @default(cuid())
+  user_id           String
+  notification_type NotificationType
+  channel           Channel
+  region            Region
+  evaluated_at      DateTime
+  decision          Decision
+  reason            DecisionReason
+  global_policy_id  String?
+  created_at        DateTime         @default(now())
+
+  user          User          @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  global_policy GlobalPolicy? @relation(fields: [global_policy_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([user_id])
+  @@index([global_policy_id])
+  @@map("evaluation_logs")
+}
