@@ -19,6 +19,10 @@ import { DeleteUserUseCase } from './application/users/delete-user.use-case';
 import { GetUserPreferencesUseCase } from './application/users/get-user-preferences.use-case';
 import { CountUsersUseCase, ListUsersUseCase } from './application/users/list-users.use-case';
 import { UpdateUserPreferencesUseCase } from './application/users/update-user-preferences.use-case';
+import { GlobalPolicyCacheService } from './application/global-policies/global-policy-cache.service';
+import { UserPreferenceContextService } from './application/users/user-preference-context.service';
+import { OtelLoggerService } from '../../shared/logging/otel-logger.service';
+import { RedisPubSubService } from '../../shared/pubsub/redis-pubsub.service';
 import { PrismaDefaultPreferenceRepository } from './infrastructure/default-preferences/prisma-default-preference.repository';
 import { PrismaEvaluationRepository } from './infrastructure/evaluation/prisma-evaluation.repository';
 import { PrismaPolicyRepository } from './infrastructure/global-policies/prisma-policy.repository';
@@ -56,6 +60,10 @@ import {
    { provide: USER_PREFERENCE_REPOSITORY, useExisting: PrismaUserPreferenceRepository },
    { provide: POLICY_REPOSITORY, useExisting: PrismaPolicyRepository },
    { provide: EVALUATION_REPOSITORY, useExisting: PrismaEvaluationRepository },
+   OtelLoggerService,
+   RedisPubSubService,
+   GlobalPolicyCacheService,
+   UserPreferenceContextService,
    ListUsersUseCase,
    CountUsersUseCase,
    CreateUserUseCase,

@@ -10,6 +10,7 @@ import { PrismaService } from '../../../../shared/prisma/prisma.service';
 import { isPrismaNotFound } from '../../../../shared/utils/prisma-errors';
 import { DefaultPreferenceRepositoryPort } from '../../application/ports/default-preferences/default-preference.repository.port';
 import {
+  ApplyPreferenceChangesInput,
   QuietHoursRecord,
   UserPreferenceRepositoryPort,
 } from '../../application/ports/users/user-preference.repository.port';
@@ -99,6 +100,43 @@ export class PrismaUserPreferenceRepository implements UserPreferenceRepositoryP
         source: PreferenceSource.user,
      },
       update: { enabled, source: PreferenceSource.user },
+   });
+  }
+
+  public async applyUserChangesAtomically(
+   userId: string,
+   input: ApplyPreferenceChangesInput,
+  ) {
+   await this.prisma.$transaction(async (tx) => {
+     for (const change of input.changes) {
+       await tx.userPreference.upsert({
+         where: {
+            user_id_notification_type_channel: {
+              user_id: userId,
+              notification_type: change.notification_type,
+              channel: change.channel,
+           },
+         },
+         create: {
+            user_id: userId,
+            notification_type: change.notification_type,
+            channel: change.channel,
+            enabled: change.enabled,
+            source: PreferenceSource.user,
+         },
+         update: { enabled: change.enabled, source: PreferenceSource.user },
+       });
+     }
+
+     if (input.quietHours === null) {
+       await tx.userQuietHours.deleteMany({ where: { user_id: userId } });
+     } else if (input.quietHours !== undefined) {
+       await tx.userQuietHours.upsert({
+          where: { user_id: userId },
+          create: { user_id: userId, ...input.quietHours },
+          update: input.quietHours,
+       });
+     }
    });
   }
 

@@ -1,10 +1,4 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  Inject,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   Channel,
   NotificationType,
@@ -12,17 +6,22 @@ import {
 } from '../../../../../generated/client';
 import { API_ERROR } from '../../../../shared/constants';
 import {
-  POLICY_REPOSITORY,
+  ApiBadRequestException,
+  ApiForbiddenException,
+} from '../../../../shared/exceptions/api-exceptions';
+import { OtelLoggerService } from '../../../../shared/logging/otel-logger.service';
+import { MetricsService } from '../../../../shared/metrics/metrics.service';
+import { setSpanAttributes, withSpan } from '../../../../shared/telemetry/tracing';
+import {
   USER_PREFERENCE_REPOSITORY,
   USER_REPOSITORY,
 } from '../../../../shared/tokens/repository.tokens';
 import { GlobalPolicyGuard } from '../../domain/global-policies/global-policy-guard';
 import { QuietHoursChecker } from '../../domain/users/quiet-hours-checker';
-import { PolicyRepositoryPort } from '../ports/global-policies/policy.repository.port';
+import { GlobalPolicyCacheService } from '../global-policies/global-policy-cache.service';
 import { UserPreferenceRepositoryPort } from '../ports/users/user-preference.repository.port';
 import { UserRepositoryPort } from '../ports/users/user.repository.port';
 import { GetUserPreferencesUseCase } from './get-user-preferences.use-case';
-import { MetricsService } from '../../../../shared/metrics/metrics.service';
 
 export type PreferenceChange = {
   readonly notification_type: NotificationType;
@@ -39,14 +38,13 @@ export type QuietHoursInput = {
 
 @Injectable()
 export class UpdateUserPreferencesUseCase {
-  private readonly logger = new Logger(UpdateUserPreferencesUseCase.name);
-
   constructor(
    @Inject(USER_REPOSITORY) private readonly userRepository: UserRepositoryPort,
    @Inject(USER_PREFERENCE_REPOSITORY) private readonly preferenceRepository: UserPreferenceRepositoryPort,
-   @Inject(POLICY_REPOSITORY) private readonly policyRepository: PolicyRepositoryPort,
+   private readonly policyCache: GlobalPolicyCacheService,
    private readonly getUserPreferencesUseCase: GetUserPreferencesUseCase,
    private readonly metricsService: MetricsService,
+   private readonly logger: OtelLoggerService,
   ) {}
 
   public async execute(
@@ -54,6 +52,23 @@ export class UpdateUserPreferencesUseCase {
     changes: PreferenceChange[],
     quietHours?: QuietHoursInput | null,
     region?: Region,
+  ) {
+   return withSpan(
+     'preferences.update',
+     {
+        'user.id': userId,
+        'preference.change_count': changes.length,
+        'preference.has_quiet_hours_change': quietHours !== undefined,
+     },
+     () => this.run(userId, changes, quietHours, region),
+   );
+  }
+
+  private async run(
+    userId: string,
+    changes: PreferenceChange[],
+    quietHours: QuietHoursInput | null | undefined,
+    region: Region | undefined,
   ) {
    const user = await this.userRepository.findById(userId);
    if (!user) {
@@ -65,8 +80,8 @@ export class UpdateUserPreferencesUseCase {
      await this.preferenceRepository.reapplyDefaultsForRegion(userId, region);
    }
 
-   const globalPolicies = await this.policyRepository.findAll();
    const userRegion = region ?? user.region;
+   const globalPolicies = await this.policyCache.getByRegions([userRegion]);
 
    for (const change of changes) {
      if (
@@ -78,52 +93,40 @@ export class UpdateUserPreferencesUseCase {
          globalPolicies,
        )
      ) {
-       this.logger.warn(
-         JSON.stringify({
-            event: 'preference.blocked_by_global_policy',
-            user_id: userId,
-            notification_type: change.notification_type,
-            channel: change.channel,
-         }),
-       );
+       setSpanAttributes({ 'preference.outcome': 'blocked' });
+       this.logger.event('WARN', 'preference.blocked_by_global_policy', {
+          'user.id': userId,
+          'notification.type': change.notification_type,
+          'notification.channel': change.channel,
+          'notification.region': userRegion,
+       });
        this.metricsService.recordPreferenceUpdate('blocked');
-       throw new ForbiddenException({
-          status_code: 403,
-          message: API_ERROR.BLOCKED_BY_GLOBAL_POLICY,
-          error: 'Forbidden',
-       });
+       throw new ApiForbiddenException(API_ERROR.BLOCKED_BY_GLOBAL_POLICY);
      }
-
-     await this.preferenceRepository.upsertUserPreference(
-       userId,
-       change.notification_type,
-       change.channel,
-       change.enabled,
-     );
    }
 
-   if (quietHours === null) {
-     await this.preferenceRepository.deleteQuietHours(userId);
-   } else if (quietHours !== undefined) {
-     if (!QuietHoursChecker.isValidTimezone(quietHours.timezone)) {
-       throw new BadRequestException({
-          status_code: 400,
-          message: API_ERROR.VALIDATION_FAILED,
-          error: 'Bad Request',
-       });
-     }
-     await this.preferenceRepository.upsertQuietHours(userId, quietHours);
+   if (quietHours && !QuietHoursChecker.isValidTimezone(quietHours.timezone)) {
+     throw new ApiBadRequestException(API_ERROR.VALIDATION_FAILED);
    }
 
+   await withSpan(
+     'preferences.apply_changes',
+     { 'preference.change_count': changes.length },
+     () =>
+       this.preferenceRepository.applyUserChangesAtomically(userId, {
+          changes,
+          quietHours: quietHours === undefined ? undefined : quietHours,
+       }),
+   );
+
+   setSpanAttributes({ 'preference.outcome': 'success' });
    this.metricsService.recordPreferenceUpdate('success');
 
-   this.logger.log(
-     JSON.stringify({
-        event: 'preference.updated',
-        user_id: userId,
-       changes,
-     }),
-   );
+   this.logger.event('INFO', 'preference.updated', {
+      'user.id': userId,
+      'preference.change_count': changes.length,
+      'preference.has_quiet_hours_change': quietHours !== undefined,
+   });
 
    return this.getUserPreferencesUseCase.execute(userId);
   }

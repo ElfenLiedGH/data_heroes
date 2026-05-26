@@ -23,9 +23,14 @@ COPY . .
 
 RUN npm run api:generate && npx tsc -b && npx vite build
 
-FROM nginx:alpine
+# nginxinc/nginx-unprivileged уже сконфигурирован под не-root пользователя (uid 101),
+# слушает 8080, пишет в /tmp/nginx.pid и /var/log/nginx/* доступен на запись.
+FROM nginxinc/nginx-unprivileged:alpine
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --chown=nginx:nginx nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder --chown=nginx:nginx /app/dist /usr/share/nginx/html
 
-EXPOSE 80
+EXPOSE 8080
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=5 \
+  CMD wget -qO- http://127.0.0.1:8080/ > /dev/null 2>&1 || exit 1

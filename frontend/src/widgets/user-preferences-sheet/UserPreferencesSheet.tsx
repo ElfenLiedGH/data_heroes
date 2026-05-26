@@ -8,7 +8,6 @@ import {
 import {
   Button,
   Message,
-  Modal,
   Sheet,
   Table,
   TableBody,
@@ -18,6 +17,7 @@ import {
   TableRow,
   Toggle,
 } from '@smwb/summer-ui';
+import { DeleteConfirmModal } from '../../shared/ui/delete-confirm-modal/DeleteConfirmModal';
 import { PreferenceSourceBadge } from '../../shared/ui/preference-source-badge/PreferenceSourceBadge';
 import { getApiErrorMessage, useAppSnackbar } from '../../shared/hooks/use-app-snackbar';
 import { useSheetPlacement } from '../../shared/hooks/use-sheet-placement';
@@ -130,7 +130,6 @@ export function UserPreferencesSheet({ userId, open, onClose }: Props) {
         isOpen={open}
         onClose={onClose}
         placement={sheetPlacement}
-        withSizeToggle={!isMobileSheet}
         resizable
         size={isMobileSheet ? '88%' : '60%'}
       >
@@ -257,60 +256,22 @@ export function UserPreferencesSheet({ userId, open, onClose }: Props) {
         }}
         onSubmit={handleSaveQuietHours}
       />
-      <Modal
+      <DeleteConfirmModal
         open={deleteQuietHoursConfirmOpen}
+        title="Удалить quiet hours?"
+        description="Настройки тихих часов будут удалены без возможности восстановления."
+        loading={saving || deleting}
         onClose={() => setDeleteQuietHoursConfirmOpen(false)}
-        role="alertdialog"
-        aria-labelledby="delete-quiet-hours-title"
-      >
-        <div className={styles.deleteConfirm}>
-          <h2 id="delete-quiet-hours-title">Удалить quiet hours?</h2>
-          <p>Настройки тихих часов будут удалены без возможности восстановления.</p>
-          <div className={styles.deleteConfirmActions}>
-            <Button
-              variant="text"
-              disabled={saving || deleting}
-              onClick={() => setDeleteQuietHoursConfirmOpen(false)}
-            >
-              Отмена
-            </Button>
-            <Button
-              color="error"
-              icon="delete"
-              disabled={saving || deleting}
-              onClick={handleDeleteQuietHours}
-            >
-              Удалить
-            </Button>
-          </div>
-        </div>
-      </Modal>
-      <Modal
+        onConfirm={handleDeleteQuietHours}
+      />
+      <DeleteConfirmModal
         open={deleteUserConfirmOpen}
+        title="Удалить пользователя?"
+        description={`Пользователь ${userId} и все его настройки будут удалены без возможности восстановления.`}
+        loading={deleting}
         onClose={() => setDeleteUserConfirmOpen(false)}
-        role="alertdialog"
-        aria-labelledby="delete-user-title"
-      >
-        <div className={styles.deleteConfirm}>
-          <h2 id="delete-user-title">Удалить пользователя?</h2>
-          <p>
-            Пользователь <strong>{userId}</strong> и все его настройки будут удалены без
-            возможности восстановления.
-          </p>
-          <div className={styles.deleteConfirmActions}>
-            <Button
-              variant="text"
-              disabled={deleting}
-              onClick={() => setDeleteUserConfirmOpen(false)}
-            >
-              Отмена
-            </Button>
-            <Button color="error" icon="delete" disabled={deleting} onClick={handleDeleteUser}>
-              Удалить
-            </Button>
-          </div>
-        </div>
-      </Modal>
+        onConfirm={handleDeleteUser}
+      />
     </>
   );
 }

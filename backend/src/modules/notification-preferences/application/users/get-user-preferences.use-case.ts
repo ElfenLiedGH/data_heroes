@@ -1,50 +1,33 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PreferenceResolver } from '../../domain/users/preference-resolver';
-import {
-  POLICY_REPOSITORY,
-  USER_PREFERENCE_REPOSITORY,
-  USER_REPOSITORY,
-} from '../../../../shared/tokens/repository.tokens';
-import { PolicyRepositoryPort } from '../ports/global-policies/policy.repository.port';
-import { UserPreferenceRepositoryPort } from '../ports/users/user-preference.repository.port';
-import { UserRepositoryPort } from '../ports/users/user.repository.port';
+import { UserPreferenceContextService } from './user-preference-context.service';
 
 @Injectable()
 export class GetUserPreferencesUseCase {
-  constructor(
-   @Inject(USER_REPOSITORY) private readonly userRepository: UserRepositoryPort,
-   @Inject(USER_PREFERENCE_REPOSITORY) private readonly preferenceRepository: UserPreferenceRepositoryPort,
-   @Inject(POLICY_REPOSITORY) private readonly policyRepository: PolicyRepositoryPort,
-  ) {}
+  constructor(private readonly contextService: UserPreferenceContextService) {}
 
   public async execute(userId: string) {
-   const user = await this.userRepository.findById(userId);
-   if (!user) {
+   const context = await this.contextService.load(userId);
+   if (!context) {
      return null;
    }
 
-   const [userPreferences, globalPolicies, quietHours] = await Promise.all([
-     this.preferenceRepository.findUserPreferences(userId),
-     this.policyRepository.findAll(),
-     this.preferenceRepository.findQuietHours(userId),
-   ]);
-
    const preferences = PreferenceResolver.resolveEffectivePreferences(
-     user.region,
-     userPreferences,
-     globalPolicies,
+     context.user.region,
+     [...context.userPreferences],
+     [...context.globalPolicies],
    );
 
    return {
-      user_id: user.id,
-      region: user.region,
+      user_id: context.user.id,
+      region: context.user.region,
      preferences,
-      quiet_hours: quietHours
+      quiet_hours: context.quietHours
        ? {
-            start_time: quietHours.start_time,
-            end_time: quietHours.end_time,
-            timezone: quietHours.timezone,
-            enabled: quietHours.enabled,
+            start_time: context.quietHours.start_time,
+            end_time: context.quietHours.end_time,
+            timezone: context.quietHours.timezone,
+            enabled: context.quietHours.enabled,
          }
        : null,
    };

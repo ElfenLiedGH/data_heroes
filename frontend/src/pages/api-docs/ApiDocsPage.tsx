@@ -7,9 +7,7 @@ export function ApiDocsPage() {
 
   return (
     <Card className={styles.card}>
-      <a href={docsUrl} className={styles.link}>
-        Открыть Swagger UI
-      </a>
+      <iframe title="OpenAPI" src={docsUrl} className={styles.frame} />
     </Card>
   );
 }

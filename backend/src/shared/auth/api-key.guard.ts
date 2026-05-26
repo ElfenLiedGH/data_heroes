@@ -2,11 +2,11 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { resolveApiKey } from '../config/api-key.config';
 import { API_ERROR } from '../constants';
+import { ApiUnauthorizedException } from '../exceptions/api-exceptions';
 import { IS_PUBLIC_KEY } from './public.decorator';
 
 @Injectable()
@@ -33,11 +33,7 @@ export class ApiKeyGuard implements CanActivate {
    const apiKey = request.headers['x-api-key'];
 
    if (!apiKey || apiKey !== this.expectedKey) {
-     throw new UnauthorizedException({
-        status_code: 401,
-        message: API_ERROR.INVALID_API_KEY,
-        error: 'Unauthorized',
-     });
+     throw new ApiUnauthorizedException(API_ERROR.INVALID_API_KEY);
    }
 
    return true;

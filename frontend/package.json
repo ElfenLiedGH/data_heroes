@@ -38,6 +38,7 @@
     "globals": "^15.14.0",
     "jsdom": "^25.0.1",
     "less": "^4.6.4",
+    "msw": "^2.14.6",
     "tsx": "^4.22.3",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.2",

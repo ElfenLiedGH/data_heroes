@@ -1,11 +1,10 @@
-import {
-  ConflictException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Channel, NotificationType, Region } from '../../../../../generated/client';
 import { API_ERROR } from '../../../../shared/constants';
+import {
+  ApiConflictException,
+  ApiNotFoundException,
+} from '../../../../shared/exceptions/api-exceptions';
 import { isPrismaUniqueViolation } from '../../../../shared/utils/prisma-errors';
 import { DEFAULT_PREFERENCE_REPOSITORY } from '../../../../shared/tokens/repository.tokens';
 import { DefaultPreferenceRepositoryPort } from '../ports/default-preferences/default-preference.repository.port';
@@ -81,11 +80,7 @@ export class CreateDefaultPreferenceUseCase {
      return mapDefaultPreference(pref);
    } catch (error) {
      if (isPrismaUniqueViolation(error)) {
-       throw new ConflictException({
-          status_code: 409,
-          message: API_ERROR.DEFAULT_PREFERENCE_ALREADY_EXISTS,
-          error: 'Conflict',
-       });
+       throw new ApiConflictException(API_ERROR.DEFAULT_PREFERENCE_ALREADY_EXISTS);
      }
      throw error;
    }
@@ -101,11 +96,7 @@ export class UpdateDefaultPreferenceUseCase {
   public async execute(id: string, input: UpdateDefaultPreferenceInput) {
    const existing = await this.preferenceRepository.findDefaultById(id);
    if (!existing) {
-     throw new NotFoundException({
-        status_code: 404,
-        message: API_ERROR.DEFAULT_PREFERENCE_NOT_FOUND,
-        error: 'Not Found',
-     });
+     throw new ApiNotFoundException(API_ERROR.DEFAULT_PREFERENCE_NOT_FOUND);
    }
 
    try {
@@ -113,11 +104,7 @@ export class UpdateDefaultPreferenceUseCase {
      return mapDefaultPreference({ ...pref, region: existing.region });
    } catch (error) {
      if (isPrismaUniqueViolation(error)) {
-       throw new ConflictException({
-          status_code: 409,
-          message: API_ERROR.DEFAULT_PREFERENCE_ALREADY_EXISTS,
-          error: 'Conflict',
-       });
+       throw new ApiConflictException(API_ERROR.DEFAULT_PREFERENCE_ALREADY_EXISTS);
      }
      throw error;
    }
@@ -133,11 +120,7 @@ export class DeleteDefaultPreferenceUseCase {
   public async execute(id: string) {
    const existing = await this.preferenceRepository.findDefaultById(id);
    if (!existing) {
-     throw new NotFoundException({
-        status_code: 404,
-        message: API_ERROR.DEFAULT_PREFERENCE_NOT_FOUND,
-        error: 'Not Found',
-     });
+     throw new ApiNotFoundException(API_ERROR.DEFAULT_PREFERENCE_NOT_FOUND);
    }
 
    await this.preferenceRepository.deleteDefault(id);

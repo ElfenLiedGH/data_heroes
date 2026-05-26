@@ -1,27 +1,18 @@
-import {
-  Injectable,
-  Logger,
-  NotFoundException,
-  Inject,
-} from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   Channel,
   NotificationType,
   Region,
 } from '../../../../../generated/client';
 import { API_ERROR } from '../../../../shared/constants';
-import {
-  EVALUATION_REPOSITORY,
-  POLICY_REPOSITORY,
-  USER_PREFERENCE_REPOSITORY,
-  USER_REPOSITORY,
-} from '../../../../shared/tokens/repository.tokens';
+import { ApiNotFoundException } from '../../../../shared/exceptions/api-exceptions';
+import { OtelLoggerService } from '../../../../shared/logging/otel-logger.service';
+import { MetricsService } from '../../../../shared/metrics/metrics.service';
+import { setSpanAttributes, withSpan } from '../../../../shared/telemetry/tracing';
+import { EVALUATION_REPOSITORY } from '../../../../shared/tokens/repository.tokens';
 import { NotificationEvaluationService } from '../../domain/evaluation/notification-evaluation.service';
 import { EvaluationRepositoryPort } from '../ports/evaluation/evaluation.repository.port';
-import { PolicyRepositoryPort } from '../ports/global-policies/policy.repository.port';
-import { UserPreferenceRepositoryPort } from '../ports/users/user-preference.repository.port';
-import { UserRepositoryPort } from '../ports/users/user.repository.port';
-import { MetricsService } from '../../../../shared/metrics/metrics.service';
+import { UserPreferenceContextService } from '../users/user-preference-context.service';
 
 export type EvaluateInput = {
   readonly user_id: string;
@@ -33,50 +24,69 @@ export type EvaluateInput = {
 
 @Injectable()
 export class EvaluateNotificationUseCase {
-  private readonly logger = new Logger(EvaluateNotificationUseCase.name);
-
   constructor(
-   @Inject(USER_REPOSITORY) private readonly userRepository: UserRepositoryPort,
-   @Inject(USER_PREFERENCE_REPOSITORY) private readonly preferenceRepository: UserPreferenceRepositoryPort,
-   @Inject(POLICY_REPOSITORY) private readonly policyRepository: PolicyRepositoryPort,
-   @Inject(EVALUATION_REPOSITORY) private readonly evaluationRepository: EvaluationRepositoryPort,
-   private readonly metricsService: MetricsService,
+    private readonly contextService: UserPreferenceContextService,
+    @Inject(EVALUATION_REPOSITORY)
+    private readonly evaluationRepository: EvaluationRepositoryPort,
+    private readonly metricsService: MetricsService,
+    private readonly logger: OtelLoggerService,
   ) {}
 
   public async execute(input: EvaluateInput) {
-   const user = await this.userRepository.findById(input.user_id);
-   if (!user) {
-     throw new NotFoundException({
-        status_code: 404,
-        message: API_ERROR.USER_NOT_FOUND,
-        error: 'Not Found',
-     });
+   return withSpan(
+     'evaluate.notification',
+     {
+        'user.id': input.user_id,
+        'notification.type': input.notification_type,
+        'notification.channel': input.channel,
+        'notification.region': input.region,
+     },
+     () => this.run(input),
+   );
+  }
+
+  private async run(input: EvaluateInput) {
+   const context = await withSpan(
+     'evaluate.load_context',
+     { 'user.id': input.user_id },
+     () => this.contextService.load(input.user_id),
+   );
+   if (!context) {
+     throw new ApiNotFoundException(API_ERROR.USER_NOT_FOUND);
    }
 
-   const [userPreferences, globalPolicies, quietHours] = await Promise.all([
-     this.preferenceRepository.findUserPreferences(input.user_id),
-     this.policyRepository.findAll(),
-     this.preferenceRepository.findQuietHours(input.user_id),
-   ]);
-
-   const result = NotificationEvaluationService.evaluate(
+   const result = await withSpan(
+     'evaluate.apply_rules',
      {
-        notification_type: input.notification_type,
-        channel: input.channel,
-        region: input.region,
-        datetime: input.datetime,
+        'preferences.count': context.userPreferences.length,
+        'policies.count': context.globalPolicies.length,
+        'has_quiet_hours': context.quietHours !== null,
      },
-     userPreferences,
-     globalPolicies,
-     quietHours
-       ? {
-            start_time: quietHours.start_time,
-            end_time: quietHours.end_time,
-            timezone: quietHours.timezone,
-            enabled: quietHours.enabled,
-         }
-       : null,
+     async () =>
+       NotificationEvaluationService.evaluate(
+         {
+            notification_type: input.notification_type,
+            channel: input.channel,
+            region: input.region,
+            datetime: input.datetime,
+         },
+         [...context.userPreferences],
+         [...context.globalPolicies],
+         context.quietHours
+           ? {
+                start_time: context.quietHours.start_time,
+                end_time: context.quietHours.end_time,
+                timezone: context.quietHours.timezone,
+                enabled: context.quietHours.enabled,
+             }
+           : null,
+       ),
    );
+
+   setSpanAttributes({
+      'evaluation.decision': result.decision,
+      'evaluation.reason': result.reason,
+   });
 
    await this.evaluationRepository.create({
       user_id: input.user_id,
@@ -97,18 +107,15 @@ export class EvaluateNotificationUseCase {
       region: input.region,
    });
 
-   this.logger.log(
-     JSON.stringify({
-        event: 'notification.evaluated',
-        user_id: input.user_id,
-        notification_type: input.notification_type,
-        channel: input.channel,
-        region: input.region,
-        decision: result.decision,
-        reason: result.reason,
-        global_policy_id: result.global_policy_id,
-     }),
-   );
+   this.logger.event('INFO', 'notification.evaluated', {
+      'user.id': input.user_id,
+      'notification.type': input.notification_type,
+      'notification.channel': input.channel,
+      'notification.region': input.region,
+      'evaluation.decision': result.decision,
+      'evaluation.reason': result.reason,
+      'evaluation.global_policy_id': result.global_policy_id ?? undefined,
+   });
 
    return {
       decision: result.decision,

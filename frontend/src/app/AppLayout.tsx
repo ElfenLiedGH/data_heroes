@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 import { useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { AppLayout as SummerAppLayout, Icon, Sheet, Sidebar } from '@smwb/summer-ui';
 import { useGetHealthQuery } from '../shared/api/api';
@@ -9,6 +9,7 @@ import {
   resolveActiveNavIndex,
 } from '../shared/config/app-nav';
 import { useIsMobile } from '../shared/hooks/use-is-mobile';
+import { RouteFallback } from './RouteFallback';
 import styles from './AppLayout.module.less';
 
 export function AppLayout() {
@@ -50,7 +51,9 @@ export function AppLayout() {
   const mainContent = (
     <div className={styles.main}>
       {healthBadge}
-      <Outlet />
+      <Suspense fallback={<RouteFallback />}>
+        <Outlet />
+      </Suspense>
     </div>
   );
 

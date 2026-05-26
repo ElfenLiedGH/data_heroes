@@ -1,9 +1,4 @@
-import {
-  ConflictException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   Channel,
   DecisionReason,
@@ -13,10 +8,15 @@ import {
 } from '../../../../../generated/client';
 import { API_ERROR } from '../../../../shared/constants';
 import {
+  ApiConflictException,
+  ApiNotFoundException,
+} from '../../../../shared/exceptions/api-exceptions';
+import {
   isPrismaForeignKeyViolation,
   isPrismaUniqueViolation,
 } from '../../../../shared/utils/prisma-errors';
 import { POLICY_REPOSITORY } from '../../../../shared/tokens/repository.tokens';
+import { GlobalPolicyCacheService } from './global-policy-cache.service';
 import { PolicyRepositoryPort } from '../ports/global-policies/policy.repository.port';
 
 export type GlobalPolicyInput = {
@@ -59,96 +59,95 @@ export class CountGlobalPoliciesUseCase {
 
 @Injectable()
 export class CreateGlobalPolicyUseCase {
-  constructor(@Inject(POLICY_REPOSITORY) private readonly policyRepository: PolicyRepositoryPort) {}
+  constructor(
+   @Inject(POLICY_REPOSITORY) private readonly policyRepository: PolicyRepositoryPort,
+   private readonly policyCache: GlobalPolicyCacheService,
+  ) {}
 
   public async execute(input: GlobalPolicyInput) {
+   let policy;
    try {
-     const policy = await this.policyRepository.create(input);
-     return {
-        id: policy.id,
-        notification_type: policy.notification_type,
-        channel: policy.channel,
-        region: policy.region,
-        action: policy.action,
-        reason_code: policy.reason_code,
-        created_at: policy.created_at.toISOString(),
-     };
+     policy = await this.policyRepository.create(input);
    } catch (error) {
      if (isPrismaUniqueViolation(error)) {
-       throw new ConflictException({
-          status_code: 409,
-          message: API_ERROR.POLICY_ALREADY_EXISTS,
-          error: 'Conflict',
-       });
+       throw new ApiConflictException(API_ERROR.POLICY_ALREADY_EXISTS);
      }
      throw error;
    }
+
+   await this.policyCache.invalidateAndPublish('policy.created');
+
+   return {
+      id: policy.id,
+      notification_type: policy.notification_type,
+      channel: policy.channel,
+      region: policy.region,
+      action: policy.action,
+      reason_code: policy.reason_code,
+      created_at: policy.created_at.toISOString(),
+   };
   }
 }
 
 @Injectable()
 export class UpdateGlobalPolicyUseCase {
-  constructor(@Inject(POLICY_REPOSITORY) private readonly policyRepository: PolicyRepositoryPort) {}
+  constructor(
+   @Inject(POLICY_REPOSITORY) private readonly policyRepository: PolicyRepositoryPort,
+   private readonly policyCache: GlobalPolicyCacheService,
+  ) {}
 
   public async execute(policyId: string, input: GlobalPolicyInput) {
    const existing = await this.policyRepository.findById(policyId);
    if (!existing) {
-     throw new NotFoundException({
-        status_code: 404,
-        message: API_ERROR.POLICY_NOT_FOUND,
-        error: 'Not Found',
-     });
+     throw new ApiNotFoundException(API_ERROR.POLICY_NOT_FOUND);
    }
 
+   let policy;
    try {
-     const policy = await this.policyRepository.update(policyId, input);
-     return {
-        id: policy.id,
-        notification_type: policy.notification_type,
-        channel: policy.channel,
-        region: policy.region,
-        action: policy.action,
-        reason_code: policy.reason_code,
-        created_at: policy.created_at.toISOString(),
-     };
+     policy = await this.policyRepository.update(policyId, input);
    } catch (error) {
      if (isPrismaUniqueViolation(error)) {
-       throw new ConflictException({
-          status_code: 409,
-          message: API_ERROR.POLICY_ALREADY_EXISTS,
-          error: 'Conflict',
-       });
+       throw new ApiConflictException(API_ERROR.POLICY_ALREADY_EXISTS);
      }
      throw error;
    }
+
+   await this.policyCache.invalidateAndPublish('policy.updated');
+
+   return {
+      id: policy.id,
+      notification_type: policy.notification_type,
+      channel: policy.channel,
+      region: policy.region,
+      action: policy.action,
+      reason_code: policy.reason_code,
+      created_at: policy.created_at.toISOString(),
+   };
   }
 }
 
 @Injectable()
 export class DeleteGlobalPolicyUseCase {
-  constructor(@Inject(POLICY_REPOSITORY) private readonly policyRepository: PolicyRepositoryPort) {}
+  constructor(
+   @Inject(POLICY_REPOSITORY) private readonly policyRepository: PolicyRepositoryPort,
+   private readonly policyCache: GlobalPolicyCacheService,
+  ) {}
 
   public async execute(policyId: string) {
    const existing = await this.policyRepository.findById(policyId);
    if (!existing) {
-     throw new NotFoundException({
-        status_code: 404,
-        message: API_ERROR.POLICY_NOT_FOUND,
-        error: 'Not Found',
-     });
+     throw new ApiNotFoundException(API_ERROR.POLICY_NOT_FOUND);
    }
 
    try {
      await this.policyRepository.deleteById(policyId);
    } catch (error) {
      if (isPrismaForeignKeyViolation(error)) {
-       throw new ConflictException({
-          status_code: 409,
-          message: API_ERROR.POLICY_HAS_REFERENCES,
-          error: 'Conflict',
-       });
+       throw new ApiConflictException(API_ERROR.POLICY_HAS_REFERENCES);
      }
      throw error;
    }
+
+   await this.policyCache.invalidateAndPublish('policy.deleted');
   }
 }

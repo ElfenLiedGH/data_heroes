@@ -21,6 +21,17 @@ export type UserPreferenceRecord = {
   readonly source: PreferenceSource;
 };
 
+export type PreferenceChangeRecord = {
+  readonly notification_type: NotificationType;
+  readonly channel: Channel;
+  readonly enabled: boolean;
+};
+
+export type ApplyPreferenceChangesInput = {
+  readonly changes: readonly PreferenceChangeRecord[];
+  readonly quietHours?: Omit<QuietHoursRecord, 'user_id'> | null;
+};
+
 export interface UserPreferenceRepositoryPort {
   reapplyDefaultsForRegion(userId: string, region: Region): Promise<boolean>;
   findUserPreferences(userId: string): Promise<UserPreferenceRecord[]>;
@@ -30,6 +41,10 @@ export interface UserPreferenceRepositoryPort {
    notificationType: NotificationType,
    channel: Channel,
    enabled: boolean,
+  ): Promise<void>;
+  applyUserChangesAtomically(
+   userId: string,
+   input: ApplyPreferenceChangesInput,
   ): Promise<void>;
   findQuietHours(userId: string): Promise<QuietHoursRecord | null>;
   upsertQuietHours(userId: string, quietHours: Omit<QuietHoursRecord, 'user_id'>): Promise<void>;

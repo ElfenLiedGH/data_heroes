@@ -5,11 +5,11 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  NotFoundException,
   Param,
   Post,
   Query,
 } from '@nestjs/common';
+import { ApiNotFoundException } from '../../../../shared/exceptions/api-exceptions';
 import {
   ApiBody,
   ApiOperation,
@@ -20,7 +20,6 @@ import {
 } from '@nestjs/swagger';
 import { API_ERROR } from '../../../../shared/constants';
 import { CountResponseDto, resolvePagination } from '../../../../shared/dto/pagination.dto';
-import { resolveUserSearch, UsersListQueryDto } from '../../../../shared/dto/users-list-query.dto';
 import { ApiErrorResponses } from '../../../../shared/openapi/api-error-responses.decorator';
 import { CreateUserUseCase } from '../../application/users/create-user.use-case';
 import { DeleteUserUseCase } from '../../application/users/delete-user.use-case';
@@ -34,7 +33,12 @@ import {
   UserPreferencesResponseDto,
   UsersListResponseDto,
 } from './users.dto';
-import { CreateUserBodyDto, UpdateUserPreferencesBodyDto } from './users.validation.dto';
+import {
+  CreateUserBodyDto,
+  resolveUserSearch,
+  UpdateUserPreferencesBodyDto,
+  UsersListQueryDto,
+} from './users.validation.dto';
 
 @ApiTags('users')
 @ApiSecurity('apiKey')
@@ -134,11 +138,7 @@ export class PreferencesController {
   ): Promise<UserPreferencesResponseDto> {
    const result = await this.getUserPreferencesUseCase.execute(userId);
    if (!result) {
-     throw new NotFoundException({
-        status_code: 404,
-        message: API_ERROR.USER_NOT_FOUND,
-        error: 'Not Found',
-     });
+     throw new ApiNotFoundException(API_ERROR.USER_NOT_FOUND);
    }
    return result;
   }
@@ -185,11 +185,7 @@ export class PreferencesController {
      body.region,
    );
    if (!result) {
-     throw new NotFoundException({
-        status_code: 404,
-        message: API_ERROR.USER_NOT_FOUND,
-        error: 'Not Found',
-     });
+     throw new ApiNotFoundException(API_ERROR.USER_NOT_FOUND);
    }
    return result;
   }

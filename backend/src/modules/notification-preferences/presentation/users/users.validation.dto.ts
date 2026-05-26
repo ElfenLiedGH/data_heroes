@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
@@ -21,6 +21,20 @@ import {
   NOTIFICATION_TYPE_VALUES,
   REGION_VALUES,
 } from '../../../../shared/constants';
+import { PaginationQueryDto } from '../../../../shared/dto/pagination.dto';
+
+export class UsersListQueryDto extends PaginationQueryDto {
+  @ApiPropertyOptional({ description: 'Partial match filter by user id' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  public search?: string;
+}
+
+export function resolveUserSearch(search?: string): string | undefined {
+  const trimmed = search?.trim();
+  return trimmed || undefined;
+}
 
 export class PreferenceChangeBodyDto {
   @ApiProperty({ enum: NOTIFICATION_TYPE_VALUES })

@@ -274,6 +274,11 @@ export function buildMockPrisma(db: MockDb) {
         db.userQuietHours.splice(idx, 1);
         return { user_id: where.user_id };
       },
+      deleteMany: async ({ where }: { where: { user_id: string } }) => {
+        const before = db.userQuietHours.length;
+        db.userQuietHours = db.userQuietHours.filter((q) => q.user_id !== where.user_id);
+        return { count: before - db.userQuietHours.length };
+      },
     },
     globalPolicy: {
       findMany: async ({ skip, take }: { skip?: number; take?: number } = {}) => {

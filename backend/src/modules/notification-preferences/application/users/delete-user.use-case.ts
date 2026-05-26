@@ -1,5 +1,6 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { API_ERROR } from '../../../../shared/constants';
+import { ApiNotFoundException } from '../../../../shared/exceptions/api-exceptions';
 import { USER_REPOSITORY } from '../../../../shared/tokens/repository.tokens';
 import { UserRepositoryPort } from '../ports/users/user.repository.port';
 
@@ -10,11 +11,7 @@ export class DeleteUserUseCase {
   public async execute(userId: string) {
    const deleted = await this.userRepository.delete(userId);
    if (!deleted) {
-     throw new NotFoundException({
-        status_code: 404,
-        message: API_ERROR.USER_NOT_FOUND,
-        error: 'Not Found',
-     });
+     throw new ApiNotFoundException(API_ERROR.USER_NOT_FOUND);
    }
   }
 }

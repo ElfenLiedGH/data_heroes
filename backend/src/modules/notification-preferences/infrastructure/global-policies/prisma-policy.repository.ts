@@ -17,6 +17,16 @@ export class PrismaPolicyRepository implements PolicyRepositoryPort {
    return this.prisma.globalPolicy.findMany({ orderBy: { created_at: 'asc' } });
   }
 
+  public async findByRegions(regions: readonly Region[]) {
+   if (regions.length === 0) {
+     return [];
+   }
+   return this.prisma.globalPolicy.findMany({
+      where: { region: { in: [...new Set(regions)] } },
+      orderBy: { created_at: 'asc' },
+   });
+  }
+
   public async findPage(offset: number, limit: number) {
    return this.prisma.globalPolicy.findMany({
       orderBy: { created_at: 'asc' },

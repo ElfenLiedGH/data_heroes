@@ -23,62 +23,73 @@ type CreateFormValues = {
   enabled: boolean;
 };
 
-type Props = {
+type UpdateFormValues = UpdateDefaultPreferenceBodyDto;
+
+type CommonProps = {
   open: boolean;
   title: string;
-  editing?: DefaultPreferenceItemDto | null;
   saving: boolean;
   onClose: () => void;
-  onCreate: (values: DefaultPreferenceBodyDto) => Promise<void>;
-  onUpdate: (values: UpdateDefaultPreferenceBodyDto) => Promise<void>;
 };
 
-export function DefaultPreferenceFormModal({
-  open,
-  title,
-  editing,
-  saving,
-  onClose,
-  onCreate,
-  onUpdate,
-}: Props) {
-  const { control, handleSubmit, reset } = useForm<
-    CreateFormValues | UpdateDefaultPreferenceBodyDto
-  >();
+type CreateProps = CommonProps & {
+  mode: 'create';
+  onSubmit: (values: DefaultPreferenceBodyDto) => Promise<void>;
+};
 
-  useEffect(() => {
-    if (!open) return;
-    if (editing) {
-      reset({
-        notification_type: editing.notification_type,
-        channel: editing.channel,
-        enabled: editing.enabled,
-      });
-      return;
-    }
-    reset({
+type UpdateProps = CommonProps & {
+  mode: 'update';
+  editing: DefaultPreferenceItemDto;
+  onSubmit: (values: UpdateDefaultPreferenceBodyDto) => Promise<void>;
+};
+
+type Props = CreateProps | UpdateProps;
+
+const NOTIFICATION_TYPE_ITEMS = toSelectItems(NOTIFICATION_TYPES);
+const CHANNEL_ITEMS = toSelectItems(CHANNELS);
+const REGION_ITEMS = [
+  { text: 'Все регионы', value: ALL_REGIONS_VALUE },
+  ...toSelectItems(REGIONS),
+];
+
+export function DefaultPreferenceFormModal(props: Props) {
+  if (props.mode === 'update') {
+    return <UpdateForm {...props} />;
+  }
+  return <CreateForm {...props} />;
+}
+
+function CreateForm({ open, title, saving, onClose, onSubmit }: CreateProps) {
+  const { control, handleSubmit, reset } = useForm<CreateFormValues>({
+    defaultValues: {
       regionChoice: ALL_REGIONS_VALUE,
       notification_type: 'transactional',
       channel: 'email',
       enabled: true,
-    });
-  }, [open, editing, reset]);
+    },
+  });
 
-  const submit = handleSubmit(async (values) => {
-    if (editing) {
-      await onUpdate(values as UpdateDefaultPreferenceBodyDto);
-    } else {
-      const createValues = values as CreateFormValues;
-      await onCreate({
-        region:
-          createValues.regionChoice === ALL_REGIONS_VALUE
-            ? null
-            : (createValues.regionChoice as DefaultPreferenceBodyDto['region']),
-        notification_type: createValues.notification_type,
-        channel: createValues.channel,
-        enabled: createValues.enabled,
+  useEffect(() => {
+    if (open) {
+      reset({
+        regionChoice: ALL_REGIONS_VALUE,
+        notification_type: 'transactional',
+        channel: 'email',
+        enabled: true,
       });
     }
+  }, [open, reset]);
+
+  const submit = handleSubmit(async (values) => {
+    await onSubmit({
+      region:
+        values.regionChoice === ALL_REGIONS_VALUE
+          ? null
+          : (values.regionChoice as DefaultPreferenceBodyDto['region']),
+      notification_type: values.notification_type,
+      channel: values.channel,
+      enabled: values.enabled,
+    });
     onClose();
   });
 
@@ -86,25 +97,18 @@ export function DefaultPreferenceFormModal({
     <Modal open={open} onClose={onClose}>
       <form onSubmit={submit} className={styles.form}>
         <h2 className={styles.title}>{title}</h2>
-        {editing ? (
-          <p className={styles.regionReadonly}>Регион: {formatRegion(editing.region)}</p>
-        ) : (
-          <Controller
-            name="regionChoice"
-            control={control}
-            render={({ field }) => (
-              <SelectField
-                label="Region"
-                value={field.value}
-                items={[
-                  { text: 'Все регионы', value: ALL_REGIONS_VALUE },
-                  ...toSelectItems(REGIONS),
-                ]}
-                onChange={(_e, data) => field.onChange(String(data.value ?? ALL_REGIONS_VALUE))}
-              />
-            )}
-          />
-        )}
+        <Controller
+          name="regionChoice"
+          control={control}
+          render={({ field }) => (
+            <SelectField
+              label="Region"
+              value={field.value}
+              items={REGION_ITEMS}
+              onChange={(_e, data) => field.onChange(String(data.value ?? ALL_REGIONS_VALUE))}
+            />
+          )}
+        />
         <Controller
           name="notification_type"
           control={control}
@@ -112,7 +116,7 @@ export function DefaultPreferenceFormModal({
             <SelectField
               label="Notification type"
               value={field.value}
-              items={toSelectItems(NOTIFICATION_TYPES)}
+              items={NOTIFICATION_TYPE_ITEMS}
               onChange={(_e, data) =>
                 field.onChange(
                   String(data.value ?? '') as DefaultPreferenceBodyDto['notification_type'],
@@ -128,7 +132,7 @@ export function DefaultPreferenceFormModal({
             <SelectField
               label="Channel"
               value={field.value}
-              items={toSelectItems(CHANNELS)}
+              items={CHANNEL_ITEMS}
               onChange={(_e, data) =>
                 field.onChange(String(data.value ?? '') as DefaultPreferenceBodyDto['channel'])
               }
@@ -146,15 +150,97 @@ export function DefaultPreferenceFormModal({
             />
           )}
         />
-        <div className={styles.actions}>
-          <Button type="button" variant="text" onClick={onClose} disabled={saving}>
-            Отмена
-          </Button>
-          <Button type="submit" disabled={saving}>
-            Сохранить
-          </Button>
-        </div>
+        <FormActions saving={saving} onClose={onClose} />
       </form>
     </Modal>
+  );
+}
+
+function UpdateForm({ open, title, editing, saving, onClose, onSubmit }: UpdateProps) {
+  const { control, handleSubmit, reset } = useForm<UpdateFormValues>({
+    defaultValues: {
+      notification_type: editing.notification_type,
+      channel: editing.channel,
+      enabled: editing.enabled,
+    },
+  });
+
+  useEffect(() => {
+    if (open) {
+      reset({
+        notification_type: editing.notification_type,
+        channel: editing.channel,
+        enabled: editing.enabled,
+      });
+    }
+  }, [open, editing, reset]);
+
+  const submit = handleSubmit(async (values) => {
+    await onSubmit(values);
+    onClose();
+  });
+
+  return (
+    <Modal open={open} onClose={onClose}>
+      <form onSubmit={submit} className={styles.form}>
+        <h2 className={styles.title}>{title}</h2>
+        <p className={styles.regionReadonly}>Регион: {formatRegion(editing.region)}</p>
+        <Controller
+          name="notification_type"
+          control={control}
+          render={({ field }) => (
+            <SelectField
+              label="Notification type"
+              value={field.value}
+              items={NOTIFICATION_TYPE_ITEMS}
+              onChange={(_e, data) =>
+                field.onChange(
+                  String(data.value ?? '') as DefaultPreferenceBodyDto['notification_type'],
+                )
+              }
+            />
+          )}
+        />
+        <Controller
+          name="channel"
+          control={control}
+          render={({ field }) => (
+            <SelectField
+              label="Channel"
+              value={field.value}
+              items={CHANNEL_ITEMS}
+              onChange={(_e, data) =>
+                field.onChange(String(data.value ?? '') as DefaultPreferenceBodyDto['channel'])
+              }
+            />
+          )}
+        />
+        <Controller
+          name="enabled"
+          control={control}
+          render={({ field }) => (
+            <Toggle
+              label="Enabled"
+              checked={field.value}
+              onChange={(_e, checked) => field.onChange(checked)}
+            />
+          )}
+        />
+        <FormActions saving={saving} onClose={onClose} />
+      </form>
+    </Modal>
+  );
+}
+
+function FormActions({ saving, onClose }: { saving: boolean; onClose: () => void }) {
+  return (
+    <div className={styles.actions}>
+      <Button type="button" variant="text" onClick={onClose} disabled={saving}>
+        Отмена
+      </Button>
+      <Button type="submit" disabled={saving}>
+        Сохранить
+      </Button>
+    </div>
   );
 }

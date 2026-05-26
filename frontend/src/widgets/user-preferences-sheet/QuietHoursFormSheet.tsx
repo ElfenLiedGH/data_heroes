@@ -53,8 +53,8 @@ export function QuietHoursFormSheet({
       isOpen={open}
       onClose={onClose}
       placement={sheetPlacement}
-      resizable={isMobileSheet}
-      size={isMobileSheet ? '75%' : '420px'}
+      resizable
+      size={isMobileSheet ? '75%' : '470px'}
     >
       <form onSubmit={submit} className={styles.content}>
         <h2 className={styles.title}>{title}</h2>

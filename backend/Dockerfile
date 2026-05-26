@@ -1,6 +1,6 @@
 FROM node:24-alpine AS builder
 
-RUN apk add --no-cache openssl postgresql-client wget
+RUN apk add --no-cache openssl
 
 WORKDIR /app
 
@@ -29,8 +29,15 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/generated ./generated
 COPY docker-entrypoint.sh ./
-RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh
+RUN sed -i 's/\r$//' docker-entrypoint.sh \
+  && chmod +x docker-entrypoint.sh \
+  && chown -R node:node /app
+
+USER node
 
 EXPOSE 3000
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=5 \
+  CMD wget -qO- http://127.0.0.1:3000/api/v1/health > /dev/null 2>&1 || exit 1
 
 ENTRYPOINT ["./docker-entrypoint.sh"]

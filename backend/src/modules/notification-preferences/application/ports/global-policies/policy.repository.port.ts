@@ -18,6 +18,7 @@ export type GlobalPolicyRecord = {
 
 export interface PolicyRepositoryPort {
   findAll(): Promise<GlobalPolicyRecord[]>;
+  findByRegions(regions: readonly Region[]): Promise<GlobalPolicyRecord[]>;
   findPage(offset: number, limit: number): Promise<GlobalPolicyRecord[]>;
   count(): Promise<number>;
   findById(id: string): Promise<GlobalPolicyRecord | null>;

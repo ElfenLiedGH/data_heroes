@@ -7,17 +7,19 @@ describe('UpdateUserPreferencesUseCase', () => {
     findById: jest.fn(),
   };
   const mockPrefRepo = {
-    upsertUserPreference: jest.fn(),
-    upsertQuietHours: jest.fn(),
+    applyUserChangesAtomically: jest.fn(),
   };
-  const mockPolicyRepo = {
-    findAll: jest.fn(),
+  const mockPolicyCache = {
+    getByRegions: jest.fn(),
   };
   const mockGetPrefs = {
     execute: jest.fn(),
   };
   const mockMetrics = {
     recordPreferenceUpdate: jest.fn(),
+  };
+  const mockLogger = {
+    event: jest.fn(),
   };
 
   let useCase: UpdateUserPreferencesUseCase;
@@ -27,12 +29,13 @@ describe('UpdateUserPreferencesUseCase', () => {
     useCase = new UpdateUserPreferencesUseCase(
       mockUserRepo as never,
       mockPrefRepo as never,
-      mockPolicyRepo as never,
+      mockPolicyCache as never,
       mockGetPrefs as never,
       mockMetrics as never,
+      mockLogger as never,
     );
     mockUserRepo.findById.mockResolvedValue({ id: 'user-07', region: Region.EU });
-    mockPolicyRepo.findAll.mockResolvedValue([
+    mockPolicyCache.getByRegions.mockResolvedValue([
       {
         notification_type: NotificationType.marketing,
         channel: Channel.sms,
@@ -43,9 +46,9 @@ describe('UpdateUserPreferencesUseCase', () => {
     mockGetPrefs.execute.mockResolvedValue({ user_id: 'user-07' });
   });
 
-  it('should upsert preference when allowed', async () => {
+  it('should apply preference change atomically when allowed', async () => {
     mockUserRepo.findById.mockResolvedValue({ id: 'user-02', region: Region.US });
-    mockPolicyRepo.findAll.mockResolvedValue([]);
+    mockPolicyCache.getByRegions.mockResolvedValue([]);
 
     await useCase.execute('user-02', [
       {
@@ -55,7 +58,15 @@ describe('UpdateUserPreferencesUseCase', () => {
       },
     ]);
 
-    expect(mockPrefRepo.upsertUserPreference).toHaveBeenCalled();
+    expect(mockPrefRepo.applyUserChangesAtomically).toHaveBeenCalledTimes(1);
+    expect(mockPrefRepo.applyUserChangesAtomically).toHaveBeenCalledWith(
+      'user-02',
+      expect.objectContaining({
+        changes: expect.arrayContaining([
+          expect.objectContaining({ enabled: true, channel: Channel.sms }),
+        ]),
+      }),
+    );
   });
 
   it('should throw 403 when global policy blocks enable', async () => {
@@ -70,11 +81,12 @@ describe('UpdateUserPreferencesUseCase', () => {
     ).rejects.toMatchObject({
       response: { message: API_ERROR.BLOCKED_BY_GLOBAL_POLICY },
     });
+    expect(mockPrefRepo.applyUserChangesAtomically).not.toHaveBeenCalled();
   });
 
   it('should be idempotent on double apply same change', async () => {
     mockUserRepo.findById.mockResolvedValue({ id: 'user-03', region: Region.US });
-    mockPolicyRepo.findAll.mockResolvedValue([]);
+    mockPolicyCache.getByRegions.mockResolvedValue([]);
     const change = {
       notification_type: NotificationType.marketing,
       channel: Channel.email,
@@ -84,7 +96,7 @@ describe('UpdateUserPreferencesUseCase', () => {
     await useCase.execute('user-03', [change]);
     await useCase.execute('user-03', [change]);
 
-    expect(mockPrefRepo.upsertUserPreference).toHaveBeenCalledTimes(2);
+    expect(mockPrefRepo.applyUserChangesAtomically).toHaveBeenCalledTimes(2);
     expect(mockGetPrefs.execute).toHaveBeenCalledTimes(2);
   });
 });

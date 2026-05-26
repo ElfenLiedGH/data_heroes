@@ -1,6 +1,10 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Region } from '../../../../../generated/client';
 import { API_ERROR } from '../../../../shared/constants';
+import {
+  ApiConflictException,
+  ApiNotFoundException,
+} from '../../../../shared/exceptions/api-exceptions';
 import {
   DEFAULT_PREFERENCE_REPOSITORY,
   USER_REPOSITORY,
@@ -23,20 +27,12 @@ export class CreateUserUseCase {
   public async execute(input: CreateUserInput) {
    const existing = await this.userRepository.findById(input.user_id);
    if (existing) {
-     throw new ConflictException({
-        status_code: 409,
-        message: API_ERROR.USER_ALREADY_EXISTS,
-        error: 'Conflict',
-     });
+     throw new ApiConflictException(API_ERROR.USER_ALREADY_EXISTS);
    }
 
    const resolved = await this.preferenceRepository.resolveDefaultsForRegion(input.region);
    if (!resolved) {
-     throw new NotFoundException({
-        status_code: 404,
-        message: API_ERROR.DEFAULT_PREFERENCE_NOT_FOUND,
-        error: 'Not Found',
-     });
+     throw new ApiNotFoundException(API_ERROR.DEFAULT_PREFERENCE_NOT_FOUND);
    }
 
    await this.userRepository.createWithDefaults(input.user_id, input.region, resolved);

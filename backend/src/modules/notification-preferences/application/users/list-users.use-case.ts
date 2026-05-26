@@ -1,11 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { PreferenceResolver } from '../../domain/users/preference-resolver';
 import {
-  POLICY_REPOSITORY,
   USER_PREFERENCE_REPOSITORY,
   USER_REPOSITORY,
 } from '../../../../shared/tokens/repository.tokens';
-import { PolicyRepositoryPort } from '../ports/global-policies/policy.repository.port';
+import { GlobalPolicyCacheService } from '../global-policies/global-policy-cache.service';
 import { UserPreferenceRepositoryPort } from '../ports/users/user-preference.repository.port';
 import { UserRepositoryPort } from '../ports/users/user.repository.port';
 
@@ -14,17 +13,22 @@ export class ListUsersUseCase {
   constructor(
    @Inject(USER_REPOSITORY) private readonly userRepository: UserRepositoryPort,
    @Inject(USER_PREFERENCE_REPOSITORY) private readonly preferenceRepository: UserPreferenceRepositoryPort,
-   @Inject(POLICY_REPOSITORY) private readonly policyRepository: PolicyRepositoryPort,
+   private readonly policyCache: GlobalPolicyCacheService,
   ) {}
 
   public async execute(offset: number, limit: number, search?: string) {
-   const [users, globalPolicies] = await Promise.all([
-     this.userRepository.findPage(offset, limit, search),
-     this.policyRepository.findAll(),
-   ]);
+   const users = await this.userRepository.findPage(offset, limit, search);
+   if (users.length === 0) {
+     return { users: [] };
+   }
 
    const userIds = users.map((u) => u.id);
-   const preferencesByUser = await this.preferenceRepository.findUserPreferencesForUsers(userIds);
+   const pageRegions = [...new Set(users.map((u) => u.region))];
+
+   const [globalPolicies, preferencesByUser] = await Promise.all([
+     this.policyCache.getByRegions(pageRegions),
+     this.preferenceRepository.findUserPreferencesForUsers(userIds),
+   ]);
 
    const usersWithPreferences = users.map((user) => {
      const userPreferences = preferencesByUser.get(user.id) ?? [];

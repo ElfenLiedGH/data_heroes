@@ -153,18 +153,29 @@ export function DefaultPreferencesPage() {
           </TableBody>
         </Table>
       )}
-      <DefaultPreferenceFormModal
-        open={formOpen}
-        title={editing ? 'Редактировать дефолтную настройку' : 'Новая дефолтная настройка'}
-        editing={editing}
-        saving={saving}
-        onClose={() => {
-          setFormOpen(false);
-          setEditing(null);
-        }}
-        onCreate={handleCreate}
-        onUpdate={handleUpdate}
-      />
+      {editing ? (
+        <DefaultPreferenceFormModal
+          mode="update"
+          open={formOpen}
+          title="Редактировать дефолтную настройку"
+          editing={editing}
+          saving={saving}
+          onClose={() => {
+            setFormOpen(false);
+            setEditing(null);
+          }}
+          onSubmit={handleUpdate}
+        />
+      ) : (
+        <DefaultPreferenceFormModal
+          mode="create"
+          open={formOpen}
+          title="Новая дефолтная настройка"
+          saving={saving}
+          onClose={() => setFormOpen(false)}
+          onSubmit={handleCreate}
+        />
+      )}
       <DeleteConfirmModal
         open={!!deletingItem}
         title="Удалить дефолтную настройку?"

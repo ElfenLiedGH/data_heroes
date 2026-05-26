@@ -11,10 +11,11 @@ import {
   SEED_USER_PREFERENCES,
   SEED_USER_QUIET_HOURS,
 } from '../../../../shared/fixtures/seed-data.fixture';
-import { PolicyRepositoryPort } from '../ports/global-policies/policy.repository.port';
+import { GlobalPolicyCacheService } from '../global-policies/global-policy-cache.service';
 import { UserPreferenceRepositoryPort } from '../ports/users/user-preference.repository.port';
 import { UserRepositoryPort } from '../ports/users/user.repository.port';
 import { GetUserPreferencesUseCase } from './get-user-preferences.use-case';
+import { UserPreferenceContextService } from './user-preference-context.service';
 
 describe('GetUserPreferencesUseCase', () => {
   const mockUserRepo = {
@@ -24,22 +25,27 @@ describe('GetUserPreferencesUseCase', () => {
     findUserPreferences: jest.fn(),
     findQuietHours: jest.fn(),
   };
-  const mockPolicyRepo = {
-    findAll: jest.fn(),
+  const mockPolicyCache = {
+    getByRegions: jest.fn(),
   };
 
   let useCase: GetUserPreferencesUseCase;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPolicyRepo.findAll.mockResolvedValue(
-      SEED_GLOBAL_POLICIES.map((p, i) => ({ ...p, id: `gp-${i}` })),
+    mockPolicyCache.getByRegions.mockImplementation((regions: Region[]) =>
+      Promise.resolve(
+        SEED_GLOBAL_POLICIES.map((p, i) => ({ ...p, id: `gp-${i}` })).filter((p) =>
+          regions.includes(p.region),
+        ),
+      ),
     );
-    useCase = new GetUserPreferencesUseCase(
+    const context = new UserPreferenceContextService(
       mockUserRepo as unknown as UserRepositoryPort,
       mockPrefRepo as unknown as UserPreferenceRepositoryPort,
-      mockPolicyRepo as unknown as PolicyRepositoryPort,
+      mockPolicyCache as unknown as GlobalPolicyCacheService,
     );
+    useCase = new GetUserPreferencesUseCase(context);
   });
 
   describe.each(SEED_PREFERENCE_SCENARIOS)(
